@@ -486,7 +486,7 @@ Color calculateColor(Vector hit_norm, Light* light, Vector L, Vector r_dir, Mate
 
 	Ray ray = Ray(hit_pnt, L);
 
-	//Hard Shadows
+	//Hard Shadows (Not working I believe)
 	/*for (int i = 0; i < scene->getNumObjects(); i++) {
 		Object* obj = scene->getObject(i);
 		float dist = 0.0f;
@@ -600,11 +600,10 @@ void renderScene()
 			pixel.x = x + 0.5f;
 			pixel.y = y + 0.5f;
 
-			/*YOUR 2 FUNTIONS:*/
+			/*YOUR 2 FUNTIONS:*/ //I Think it is working as it should?
 			Ray ray = scene->GetCamera()->PrimaryRay(pixel);   //function from camera.h
-
-			color = rayTracing(ray, 1, 1.0).clamp();
 			
+			color = rayTracing(ray, 1, 1.0).clamp();
 
 			//color = scene->GetBackgroundColor(); //TO CHANGE - just for the template
 
