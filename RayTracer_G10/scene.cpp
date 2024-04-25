@@ -22,6 +22,8 @@ Triangle::Triangle(Vector& P0, Vector& P1, Vector& P2)
 
 	/* Calculate the normal */
 	normal = Vector(0, 0, 0);
+	normal = (P2 - P0) % (P1 - P0);
+	normal *= -1;
 	normal.normalize();
 
 	//YOUR CODE to Calculate the Min and Max for bounding box
@@ -107,16 +109,15 @@ bool Sphere::intercepts(Ray& r, float& t )
 {
 	Vector oc = this->center - r.origin;
 	float b = r.direction * oc;
-
 	float c = oc * oc - this->SqRadius;
+	float discr = pow(b, 2) - c;
 
-	if (pow(b, 2) - c <= 0) return false;
+	if (discr <= 0) return false;
 
 	if (c > 0.0f) {
 		if (b <= 0.0f) return false;
 
 		t = b - sqrt(pow(b, 2) - c);
-
 	}
 	else t = b + sqrt(pow(b, 2) - c);
 
@@ -131,10 +132,9 @@ Vector Sphere::getNormal( Vector point )
 }
 
 AABB Sphere::GetBoundingBox() {
-	Vector a_min;
-	Vector a_max ;
+	Vector a_min(this->center.x - this->radius, this->center.y - this->radius, this->center.z - this->radius);
+	Vector a_max(this->center.x + this->radius, this->center.y + this->radius, this->center.z + this->radius);
 
-	//PUT HERE YOUR CODE
 	return(AABB(a_min, a_max));
 }
 
