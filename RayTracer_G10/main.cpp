@@ -25,16 +25,16 @@
 #include "macros.h"
 
 //Enable OpenGL drawing.  
-bool drawModeEnabled = true;
+bool drawModeEnabled = false;
 
-bool P3F_scene = false; //choose between P3F scene or a built-in random scene
+bool P3F_scene = true; //choose between P3F scene or a built-in random scene
 
 #define MAX_DEPTH 4  //number of bounces
 
 #define CAPTION "Whitted Ray-Tracer"
 #define VERTEX_COORD_ATTRIB 0
 #define COLOR_ATTRIB 1
-#define SH_BIAS 0.001
+#define SHADOW_BIAS 0.001
 
 unsigned int FrameCount = 0;
 
@@ -455,51 +455,53 @@ void setupGLUT(int argc, char* argv[])
 /////////////////////////////////////////////////////YOUR CODE HERE///////////////////////////////////////////////////////////////////////////////////////
 
 Object* getClosestObject(Ray ray, float& t) {
-	float minDist = INFINITY;
+	float min_dist = INFINITY;
 	Object* closest = NULL;
 
 	for (int i = 0; i < scene->getNumObjects(); i++) {
 		Object* obj = scene->getObject(i);
 		float dist = 0.0f;
 		if (obj->intercepts(ray, dist)) {
-			if (dist < minDist) {
+			if (dist < min_dist) {
 				closest = obj;
-				minDist = dist;
+				min_dist = dist;
 			}
 		}
 	}
-	t = minDist;
+	t = min_dist;
 	return closest;
 }
 
+bool getAnyIntersection(Ray ray, float min_dist, bool in_shadow) {
+	Object* obj = NULL;
 
-Color calculateColor(Vector hit_norm, Light* light, Vector L, Vector r_dir, Material* mat, Vector hit_pnt) {
-	Color color = Color(0, 0, 0);
-	Vector halfway_dir = L + r_dir;
-	halfway_dir = halfway_dir.normalize();
-	float distance = (light->position - hit_pnt).length();
+	for (int i = 0; i < scene->getNumObjects(); i++) {
+		obj = scene->getObject(i);
 
-	float diff_int = max(hit_norm * L, 0);
-	Color diffuse = light->color * diff_int * mat->GetDiffColor() *mat->GetDiffuse();
-
-	float spec_int = pow(max((hit_norm * halfway_dir), 0.0), mat->GetShine());
-	Color specular = mat->GetSpecColor() * spec_int * light->color * mat->GetSpecular();
-
-	Ray ray = Ray(hit_pnt, L);
-
-	//Hard Shadows (Not working I believe)
-	/*for (int i = 0; i < scene->getNumObjects(); i++) {
-		Object* obj = scene->getObject(i);
-		float dist = 0.0f;
-		if (obj->intercepts(ray, dist)) {
-			return Color(0, 0, 0);
+		if (obj->intercepts(ray, min_dist)) {
+			in_shadow = true;
+			return in_shadow;
 		}
 	}
-	*/
 
-	color = (diffuse + specular) / (0.05 * distance * distance); // (1 + 0.1 * distance + 0.03 * distance * distance);
+	return in_shadow;
+}
 
-	return color; // (1 + 0.1 * distance + 0.03 * distance * distance);
+
+Color calculateColor(Vector hit_norm, Light* light, Vector L, Vector s_r_dir, Material* mat, Vector hit_pnt) {
+	Color color = Color(0, 0, 0);
+	Vector halfway_dir = L + s_r_dir;
+	halfway_dir = halfway_dir.normalize();
+
+	float diff_int = max(hit_norm * L, 0.0);
+	Color diffuse = light->color * mat->GetDiffColor() * diff_int;
+
+	float spec_int = pow(max((hit_norm * halfway_dir), 0.0), mat->GetShine());
+	Color specular = light->color * mat->GetSpecColor() * spec_int;
+
+	color = diffuse * mat ->GetDiffuse() + specular * mat->GetSpecular();
+
+	return color;
 }
 
 
@@ -538,34 +540,49 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 
 	//INSERT HERE YOUR CODE
 	Color color = Color(0,0,0);
-	float min_dist;
+	float min_dist, intensity;
 	Object* hit_obj = NULL;
-	Vector hit_pnt, hit_norm, L, reflection;
+	Vector hit_pnt, exact_hit_pnt, hit_norm, light_Pos, L, s_ray_dir, reflection;
+	Light* light = NULL;
+	bool in_shadow = false;
 
 	//Gest ClosestObject
 	hit_obj = getClosestObject(ray, min_dist);
 
-	//If ray intercepts no object return background color
-	//if (hit_obj == NULL) return scene->GetSkyboxColor(ray);
-	if(hit_obj == NULL) return scene->GetBackgroundColor();
+	//If ray intercepts no object return background or Skybox color
+	if (hit_obj == NULL) {
+		if (scene->GetSkyBoxFlg())
+			return scene->GetSkyboxColor(ray);
+		else
+			return scene->GetBackgroundColor();
+	}
 	
 	hit_pnt = ray.origin + ray.direction * min_dist;
-	hit_norm = hit_obj->getNormal(hit_pnt);
+	exact_hit_pnt = hit_pnt + hit_obj->getNormal(hit_pnt) * SHADOW_BIAS;
+	hit_norm = hit_obj->getNormal(exact_hit_pnt).normalize();
 
 	for (int i = 0; i < scene->getNumLights(); i++) {
-		Light* light = scene->getLight(i);
-		Vector light_Pos = light->position;
+		light = scene->getLight(i);
+		light_Pos = light->position;
 
 		L = light_Pos - hit_pnt;
 		L = L.normalize();
 
-		float intensity = L * hit_norm;
+		intensity = L * hit_norm;
 
 		reflection = ray.direction - hit_norm * (ray.direction * hit_norm) * 2;
 		reflection = reflection.normalize();
 
 		if (intensity > 0) {
-			color += calculateColor(hit_norm, light, L, ray.direction, hit_obj->GetMaterial(), hit_pnt);
+
+			Ray shadow_feeler = Ray(exact_hit_pnt, L);
+			in_shadow = getAnyIntersection(shadow_feeler, min_dist, in_shadow);
+
+			if (!in_shadow) {
+				s_ray_dir = ray.direction * -1;
+				color += calculateColor(hit_norm, light, L, s_ray_dir, hit_obj->GetMaterial(), hit_pnt);
+			}
+
 		}
 
 	}
