@@ -25,7 +25,7 @@
 #include "macros.h"
 
 //Enable OpenGL drawing.  
-bool drawModeEnabled = true;
+bool drawModeEnabled = false;
 
 bool P3F_scene = true; //choose between P3F scene or a built-in random scene
 
@@ -86,8 +86,14 @@ int WindowHandle = 0;
 
 // NOVAS VARIAVEIS
 
-bool ANTIALIASING = false
+bool ANTIALIASING = true;
+bool DEPTHOFFIELD = true;
 
+int SPP = 4; // (sqrt) Sample Per Pixel - (sqrt) Number of rays called for each pixel
+
+bool SOFTSHADOWS = false;
+int Nmb_light = 4;
+int off_x, off_y; // Used to cause a more even distribution when using soft shadows + antialiasing
 
 /////////////////////////////////////////////////////////////////////// ERRORS
 
@@ -529,6 +535,7 @@ Vector sample_unit_sphere(void) {
 
 
 
+
 Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medium 1 where the ray is travelling
 {
 	/*
@@ -711,6 +718,16 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 
 // Render function by primary ray casting from the eye towards the scene's objects
 
+// Sampling with rejection method
+static Vector sample_unit_disk(void) {
+	Vector p;
+	do {
+		p = Vector(rand_float(), rand_float(), 0.0) * 2 - Vector(1.0, 1.0, 0.0);
+	} while (p * p >= 1.0);
+	return p;
+}
+
+
 void renderScene()
 {
 	int index_pos = 0;
@@ -733,12 +750,61 @@ void renderScene()
 
 			Vector pixel;  //viewport coordinates
 			
-			pixel.x = x + 0.5f;
-			pixel.y = y + 0.5f;
 
-			Ray ray = scene->GetCamera()->PrimaryRay(pixel);   //function from camera.h
+			if (!ANTIALIASING) {
+				pixel.x = x + 0.5f;
+				pixel.y = y + 0.5f;
+
+				if (DEPTHOFFIELD) {
+					Vector lens;
+					float aperture = scene->GetCamera()->GetAperture();
+
+					// Compute the sample point on the "thin lens" 
+				
+					// sample_unit_disk esta a bruta
+					lens = sample_unit_disk() * aperture;
+
+					Ray ray = scene->GetCamera()->PrimaryRay(lens, pixel);
+					color = rayTracing(ray, 1, 1.0).clamp();
+
+				}
+				else {
+					Ray ray = scene->GetCamera()->PrimaryRay(pixel);   //function from camera.h
+					color = rayTracing(ray, 1, 1.0).clamp();
+				}
+			}
+			else {
+				for (int p = 0; p < SPP; p++) {
+					for (int q = 0; q < SPP; q++) {
+						off_x = p;
+						off_y = q;
+						pixel.x = x + (p + rand_float()) / SPP;
+						pixel.y = y + (q + rand_float()) / SPP;
+
+						Ray* ray = nullptr;
+
+						// LAB 3: DEPTH OF FIELD //
+						if (DEPTHOFFIELD) {
+							Vector lens;
+							float aperture = scene->GetCamera()->GetAperture();
+
+							// Compute the sample point on the "thin lens"
+							lens = sample_unit_disk() * aperture;
+
+							ray = &scene->GetCamera()->PrimaryRay(lens, pixel);
+						}
+						else {
+							ray = &scene->GetCamera()->PrimaryRay(pixel);
+						}
+
+
+						color += rayTracing(*ray, 1, 1.0).clamp();
+					}
+				}
+				color = color / (SPP * SPP);
+
+			}
 			
-			color = rayTracing(ray, 1, 1.0).clamp();
 
 
 			// nao aleterar :pointing_down_arrow
