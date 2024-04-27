@@ -25,7 +25,7 @@
 #include "macros.h"
 
 //Enable OpenGL drawing.  
-bool drawModeEnabled = false;
+bool drawModeEnabled = true;
 
 bool P3F_scene = true; //choose between P3F scene or a built-in random scene
 
@@ -83,6 +83,10 @@ int RES_X, RES_Y;
 
 int WindowHandle = 0;
 
+
+// NOVAS VARIAVEIS
+
+bool ANTIALIASING = false
 
 
 /////////////////////////////////////////////////////////////////////// ERRORS
@@ -515,6 +519,16 @@ float schlickApproximation(float cos_d, float ior_1, float ior_2) {
 
 
 
+Vector sample_unit_sphere(void) {
+	Vector p;
+	do {
+		p = Vector(rand_float(), rand_float(), rand_float()) * 2 - Vector(1.0, 1.0, 1.0);
+	} while (p * p >= 1.0);
+	return p;
+}
+
+
+
 Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medium 1 where the ray is travelling
 {
 	/*
@@ -571,11 +585,7 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	exact_hit_pnt = hit_pnt + hit_obj->getNormal(hit_pnt) * SHADOW_BIAS;
 	hit_norm = hit_obj->getNormal(exact_hit_pnt).normalize();
 
-	// If ray is inside the object
-	if (hit_norm * ray.direction > 0) {
-		hit_norm *= -1.0f;
-		r_inside = true;
-	}
+
 
 	for (int i = 0; i < scene->getNumLights(); i++) {
 		light = scene->getLight(i);
@@ -605,45 +615,98 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 		return color;
 	}
 
-	Material* mat = hit_obj->GetMaterial();
-	float Kr = 1.0f;
-	float transmittance = mat->GetTransmittance();
-
-	if (transmittance > 0) {
-		float cos_t_i = max(-(hit_norm * ray.direction), 0.0f);
-		//If r_inside == true, then the outside material is Air, thus ior = 1.0f 
-		if (r_inside) ior_2 = 1.0f;
-		else ior_2 = mat->GetRefrIndex();
-
-		Kr = schlickApproximation(cos_t_i, ior_2, ior_1);
-		v_t = hit_norm * cos_t_i + ray.direction;
-		v_t = v_t.normalize();
-		float sin_t_t = (ior_1 / ior_2) * v_t.length();
-
-		if (sin_t_t < 1) {
-			float cos_t_t = sqrt( 1 - pow(sin_t_t, 2) );
-			refraction = v_t * sin_t_t - hit_norm * cos_t_t;
-			refraction = refraction.normalize();
-			Ray refr_ray = Ray((hit_pnt - hit_norm * SHADOW_BIAS), refraction);
-			color += rayTracing(refr_ray, depth + 1, ior_2) * transmittance * (1 - Kr);
-		}
-		/*else {
-			reflection = ray.direction - hit_norm * (ray.direction * hit_norm) * 2;
-			reflection = reflection.normalize();
-			Ray refl_ray = Ray(exact_hit_pnt, reflection);
-			color += rayTracing(refl_ray, depth + 1, ior_1) * mat->GetReflection() * Kr;
-		}*/
+		// If ray is inside the object
+	if (hit_norm * ray.direction > 0) {
+		hit_norm *= -1.0f;
+		r_inside = true;
 	}
+
+	//Reflection Refraction
+
+	Color transmitanceColor = Color(), reflectionColor = Color();
+	Material* mat = hit_obj->GetMaterial();
+
+	// reflection
+	bool FUZZY_REFLECTIONS = false;
+	float ROUGHNESS = 0.1f;
 
 	if (mat->GetReflection() > 0) {
-		reflection = ray.direction - hit_norm * (ray.direction * hit_norm) * 2;
-		reflection = reflection.normalize();
-		Ray refl_ray = Ray(exact_hit_pnt, reflection);
-		color += rayTracing(refl_ray, depth + 1, ior_1) * mat->GetReflection() * Kr;
+		//	compute ray in the reflected direction
+		// https://www.scratchapixel.com/code.php?id=3&origin=/lessons/3d-basic-rendering/introduction-to-ray-tracing
+		Vector rDir = ray.direction - hit_norm * 2 * (ray.direction * hit_norm);
+
+		// ASSIGNMENT EXTRA - FUZZY REFLECTIONS //
+		https://raytracing.github.io/books/RayTracingInOneWeekend.html#metal/fuzzyreflection
+		Ray* rRay = nullptr;
+		if (FUZZY_REFLECTIONS)
+			rRay = &Ray(exact_hit_pnt, (rDir + (sample_unit_sphere() * ROUGHNESS)).normalize());
+		else
+			rRay = &Ray(exact_hit_pnt, rDir);
+
+		//	compute reflection color using recursion (rColor = rayTracing(reflected ray direction, depth+1))
+		reflectionColor = rayTracing(*rRay, depth + 1, ior_1);
 	}
 
-	return color;
+	// REFRACTION //
+
+	bool SCHLICK_APPROX = TRUE;
+
+	float Kr; // Reflection mix value 
+	Vector view = ray.direction * -1; // View
+	Vector viewNormal = (hit_norm * (view * hit_norm)); // ViewNormal
+	Vector viewTangent = viewNormal - view; // ViewTangent
+
+	if (mat->GetTransmittance() > 0) {
+		float Rperp = 1, Rparal = 1;
+
+		// Change rerfraction index depending of we're traveling inside or not (Snell Law)
+		float n = !r_inside ? ior_1 / mat->GetRefrIndex() : ior_1;
+
+		float cosOi = viewNormal.length();
+		float sinOt = (n)*viewTangent.length();
+		float insqrt = 1 - pow(sinOt, 2);
+
+		if (insqrt >= 0) {
+			float cosOt = sqrt(insqrt);
+
+			// compute ray in the refracted direction
+			Vector tDir = (viewTangent.normalize() * sinOt + hit_norm * (-cosOt)).normalize();
+			Vector intercept = exact_hit_pnt + tDir * SHADOW_BIAS;
+
+			Ray tRay = Ray(intercept, tDir);
+
+			float newIoR = !r_inside? mat->GetRefrIndex() : 1; // New Indice of Refraction
+
+			// compute refracted color using recursion (tColor = rayTracing(refracted ray direction, depth+1)
+			transmitanceColor = rayTracing(tRay, depth + 1, newIoR);
+
+			// Schlick Approximation
+			if (SCHLICK_APPROX) {
+				float r0 = pow(((ior_1 - newIoR) / (ior_1 + newIoR)), 2);
+				Kr = r0 + (1 - r0) * pow(1 - cosOi, 5);
+			}
+			else {
+				// Fresnel Equations https://www.scratchapixel.com/lessons/3d-basic-rendering/introduction-to-shading/reflection-refraction-fresnel
+				Rparal = pow(fabs((ior_1 * cosOt - newIoR * cosOi) / (ior_1 * cosOt + newIoR * cosOi)), 2); // parallel
+				Rperp = pow(fabs((ior_1 * cosOi - newIoR * cosOt) / (ior_1 * cosOi + newIoR * cosOt)), 2); // perpendicular
+			}
+		}
+
+		if (!SCHLICK_APPROX || insqrt < 0) { // If we're not using schlick always do this, else if we're using schlick only do this if insqrt is < 0
+			// ratio of reflected ligth (mirror reflection attenuation)
+			Kr = 1 / 2 * (Rperp + Rparal);
+		}
+
+	}
+	else { // Material is opaque
+		Kr = mat->GetSpecular();
+	}
+	//	reduce rColor and tColor by the reflection mix value and add to color
+	color += reflectionColor * Kr * mat->GetSpecColor() + transmitanceColor * (1 - Kr);
+
+	return color.clamp();
 }
+
 
 
 // Render function by primary ray casting from the eye towards the scene's objects
@@ -659,6 +722,9 @@ void renderScene()
 		scene->GetCamera()->SetEye(Vector(camX, camY, camZ));  //Camera motion
 	}
 
+
+	// For all pixels
+
 	for (int y = 0; y < RES_Y; y++)
 	{
 		for (int x = 0; x < RES_X; x++)
@@ -666,15 +732,16 @@ void renderScene()
 			Color color;
 
 			Vector pixel;  //viewport coordinates
+			
 			pixel.x = x + 0.5f;
 			pixel.y = y + 0.5f;
 
-			/*YOUR 2 FUNTIONS:*/ //I Think it is working as it should?
 			Ray ray = scene->GetCamera()->PrimaryRay(pixel);   //function from camera.h
 			
 			color = rayTracing(ray, 1, 1.0).clamp();
 
-			//color = scene->GetBackgroundColor(); //TO CHANGE - just for the template
+
+			// nao aleterar :pointing_down_arrow
 
 			img_Data[counter++] = u8fromfloat((float)color.r());
 			img_Data[counter++] = u8fromfloat((float)color.g());
