@@ -472,7 +472,7 @@ Object* getClosestObject(Ray ray, float& t) {
 	return closest;
 }
 
-bool getAnyIntersection(Ray ray, float min_dist, bool in_shadow) {
+bool getIntersection(Ray ray, float min_dist, bool in_shadow) {
 	Object* obj = NULL;
 
 	for (int i = 0; i < scene->getNumObjects(); i++) {
@@ -489,6 +489,7 @@ bool getAnyIntersection(Ray ray, float min_dist, bool in_shadow) {
 
 
 Color calculateColor(Vector hit_norm, Light* light, Vector L, Vector s_r_dir, Material* mat, Vector hit_pnt) {
+
 	Color color = Color(0, 0, 0);
 	Vector halfway_dir = L + s_r_dir;
 	halfway_dir = halfway_dir.normalize();
@@ -502,6 +503,14 @@ Color calculateColor(Vector hit_norm, Light* light, Vector L, Vector s_r_dir, Ma
 	color = diffuse * mat ->GetDiffuse() + specular * mat->GetSpecular();
 
 	return color;
+}
+
+float schlickApproximation(float cos_d, float ior_1, float ior_2) {
+
+	float R_0 = pow(((ior_1 - ior_2) / (ior_1 + ior_2)), 2);
+	float Kr = R_0 + (1.0f - R_0) * pow((1 - cos_d), 5);
+
+	return Kr;
 }
 
 
@@ -540,16 +549,17 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 
 	//INSERT HERE YOUR CODE
 	Color color = Color(0,0,0);
-	float min_dist, intensity;
+	float min_dist, intensity, ior_2;
 	Object* hit_obj = NULL;
-	Vector hit_pnt, exact_hit_pnt, hit_norm, light_Pos, L, s_ray_dir, reflection;
+	Vector hit_pnt, exact_hit_pnt, hit_norm, light_Pos, L, s_ray_dir, v_t, refraction, reflection;
 	Light* light = NULL;
 	bool in_shadow = false;
+	bool r_inside = false;
 
 	//Gest ClosestObject
 	hit_obj = getClosestObject(ray, min_dist);
 
-	//If ray intercepts no object return background or Skybox color
+	//If ray intercepts no object return Background or Skybox color
 	if (hit_obj == NULL) {
 		if (scene->GetSkyBoxFlg())
 			return scene->GetSkyboxColor(ray);
@@ -560,6 +570,12 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	hit_pnt = ray.origin + ray.direction * min_dist;
 	exact_hit_pnt = hit_pnt + hit_obj->getNormal(hit_pnt) * SHADOW_BIAS;
 	hit_norm = hit_obj->getNormal(exact_hit_pnt).normalize();
+
+	// If ray is inside the object
+	if (hit_norm * ray.direction > 0) {
+		hit_norm *= -1.0f;
+		r_inside = true;
+	}
 
 	for (int i = 0; i < scene->getNumLights(); i++) {
 		light = scene->getLight(i);
@@ -576,26 +592,58 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 		if (intensity > 0) {
 
 			Ray shadow_feeler = Ray(exact_hit_pnt, L);
-			in_shadow = getAnyIntersection(shadow_feeler, min_dist, in_shadow);
+			in_shadow = getIntersection(shadow_feeler, min_dist, in_shadow);
 
 			if (!in_shadow) {
 				s_ray_dir = ray.direction * -1;
 				color += calculateColor(hit_norm, light, L, s_ray_dir, hit_obj->GetMaterial(), hit_pnt);
 			}
-
 		}
-
 	}
 
-	if (hit_obj->GetMaterial()->GetReflection() > 0 && depth < 3) {
+	if (depth == MAX_DEPTH) {
+		return color;
+	}
+
+	Material* mat = hit_obj->GetMaterial();
+	float Kr = 1.0f;
+	float transmittance = mat->GetTransmittance();
+
+	if (transmittance > 0) {
+		float cos_t_i = max(-(hit_norm * ray.direction), 0.0f);
+		//If r_inside == true, then the outside material is Air, thus ior = 1.0f 
+		if (r_inside) ior_2 = 1.0f;
+		else ior_2 = mat->GetRefrIndex();
+
+		Kr = schlickApproximation(cos_t_i, ior_2, ior_1);
+		v_t = hit_norm * cos_t_i + ray.direction;
+		v_t = v_t.normalize();
+		float sin_t_t = (ior_1 / ior_2) * v_t.length();
+
+		if (sin_t_t < 1) {
+			float cos_t_t = sqrt( 1 - pow(sin_t_t, 2) );
+			refraction = v_t * sin_t_t - hit_norm * cos_t_t;
+			refraction = refraction.normalize();
+			Ray refr_ray = Ray((hit_pnt - hit_norm * SHADOW_BIAS), refraction);
+			color += rayTracing(refr_ray, depth + 1, ior_2) * transmittance * (1 - Kr);
+		}
+		/*else {
+			reflection = ray.direction - hit_norm * (ray.direction * hit_norm) * 2;
+			reflection = reflection.normalize();
+			Ray refl_ray = Ray(exact_hit_pnt, reflection);
+			color += rayTracing(refl_ray, depth + 1, ior_1) * mat->GetReflection() * Kr;
+		}*/
+	}
+
+	if (mat->GetReflection() > 0) {
 		reflection = ray.direction - hit_norm * (ray.direction * hit_norm) * 2;
-		Ray refl_ray = Ray(hit_pnt + hit_norm * 0.001, reflection.normalize());
-		color += rayTracing(refl_ray, depth + 1, ior_1) * hit_obj->GetMaterial()->GetReflection();
+		reflection = reflection.normalize();
+		Ray refl_ray = Ray(exact_hit_pnt, reflection);
+		color += rayTracing(refl_ray, depth + 1, ior_1) * mat->GetReflection() * Kr;
 	}
 
 	return color;
 }
-
 
 
 // Render function by primary ray casting from the eye towards the scene's objects
