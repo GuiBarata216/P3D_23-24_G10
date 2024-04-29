@@ -83,6 +83,17 @@ int RES_X, RES_Y;
 
 int WindowHandle = 0;
 
+//NEW VARIABLES
+
+bool ANTIALIASING = true;
+bool DEPTHOFFIELD = false;
+
+int SPP = 4; // (sqrt) Sample Per Pixel - (sqrt) Number of rays called for each pixel
+
+bool SOFTSHADOWS = false;
+int Nmb_light = 4;
+int off_x, off_y; // Used to cause a more even distribution when using soft shadows + antialiasing
+
 
 
 /////////////////////////////////////////////////////////////////////// ERRORS
@@ -629,12 +640,6 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 		else {
 			Kr = 1.0f;
 		}
-		/*else {
-			reflection = ray.direction - hit_norm * (ray.direction * hit_norm) * 2;
-			reflection = reflection.normalize();
-			Ray refl_ray = Ray(exact_hit_pnt, reflection);
-			color += rayTracing(refl_ray, depth + 1, ior_1) * mat->GetReflection() * Kr;
-		}*/
 	}
 
 	if (mat->GetReflection() > 0) {
@@ -668,15 +673,32 @@ void renderScene()
 			Color color;
 
 			Vector pixel;  //viewport coordinates
-			pixel.x = x + 0.5f;
-			pixel.y = y + 0.5f;
 
-			/*YOUR 2 FUNTIONS:*/ //I Think it is working as it should?
-			Ray ray = scene->GetCamera()->PrimaryRay(pixel);   //function from camera.h
-			
-			color = rayTracing(ray, 1, 1.0).clamp();
+			if (!ANTIALIASING) {
+				pixel.x = x + 0.5f;
+				pixel.y = y + 0.5f;
 
-			//color = scene->GetBackgroundColor(); //TO CHANGE - just for the template
+				Ray ray = scene->GetCamera()->PrimaryRay(pixel);   //function from camera.h
+				color = rayTracing(ray, 1, 1.0).clamp();
+			}
+			else {
+				for (int p = 0; p < SPP; p++) {
+					for (int q = 0; q < SPP; q++) {
+						off_x = p;
+						off_y = q;
+						pixel.x = x + (p + rand_float()) / SPP;
+						pixel.y = y + (q + rand_float()) / SPP;
+
+						Ray* ray = nullptr;
+
+						ray = &scene->GetCamera()->PrimaryRay(pixel);
+
+						color += rayTracing(*ray, 1, 1.0).clamp();
+					}
+				}
+				color = color / (SPP * SPP);
+
+			}
 
 			img_Data[counter++] = u8fromfloat((float)color.r());
 			img_Data[counter++] = u8fromfloat((float)color.g());
