@@ -27,9 +27,9 @@
 //Enable OpenGL drawing.  
 bool drawModeEnabled = false;
 
-bool P3F_scene = true; //choose between P3F scene or a built-in random scene
+bool P3F_scene = false; //choose between P3F scene or a built-in random scene
 
-#define MAX_DEPTH 4  //number of bounces
+#define MAX_DEPTH 6  //number of bounces
 
 #define CAPTION "Whitted Ray-Tracer"
 #define VERTEX_COORD_ATTRIB 0
@@ -577,26 +577,25 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 		r_inside = true;
 	}
 
-	for (int i = 0; i < scene->getNumLights(); i++) {
-		light = scene->getLight(i);
-		light_Pos = light->position;
+	if (!r_inside){
+		for (int i = 0; i < scene->getNumLights(); i++) {
+			light = scene->getLight(i);
+			light_Pos = light->position;
 
-		L = light_Pos - hit_pnt;
-		L = L.normalize();
+			L = light_Pos - hit_pnt;
+			L = L.normalize();
 
-		intensity = L * hit_norm;
+			intensity = L * hit_norm;
 
-		reflection = ray.direction - hit_norm * (ray.direction * hit_norm) * 2;
-		reflection = reflection.normalize();
+			if (intensity > 0) {
 
-		if (intensity > 0) {
+				Ray shadow_feeler = Ray(exact_hit_pnt, L);
+				in_shadow = getIntersection(shadow_feeler, min_dist, in_shadow);
 
-			Ray shadow_feeler = Ray(exact_hit_pnt, L);
-			in_shadow = getIntersection(shadow_feeler, min_dist, in_shadow);
-
-			if (!in_shadow) {
-				s_ray_dir = ray.direction * -1;
-				color += calculateColor(hit_norm, light, L, s_ray_dir, hit_obj->GetMaterial(), hit_pnt);
+				if (!in_shadow) {
+					s_ray_dir = ray.direction * -1;
+					color += calculateColor(hit_norm, light, L, s_ray_dir, hit_obj->GetMaterial(), hit_pnt);
+				}
 			}
 		}
 	}
@@ -606,26 +605,29 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	}
 
 	Material* mat = hit_obj->GetMaterial();
-	float Kr = 1.0f;
+	float Kr = mat->GetReflection();
 	float transmittance = mat->GetTransmittance();
 
-	if (transmittance > 0) {
-		float cos_t_i = max(-(hit_norm * ray.direction), 0.0f);
+	if (transmittance != 0) {
+		float cos_t_i = -(hit_norm * ray.direction);
 		//If r_inside == true, then the outside material is Air, thus ior = 1.0f 
 		if (r_inside) ior_2 = 1.0f;
 		else ior_2 = mat->GetRefrIndex();
 
 		Kr = schlickApproximation(cos_t_i, ior_2, ior_1);
 		v_t = hit_norm * cos_t_i + ray.direction;
-		v_t = v_t.normalize();
 		float sin_t_t = (ior_1 / ior_2) * v_t.length();
-
+		v_t = v_t.normalize();
+		
 		if (sin_t_t < 1) {
 			float cos_t_t = sqrt( 1 - pow(sin_t_t, 2) );
 			refraction = v_t * sin_t_t - hit_norm * cos_t_t;
 			refraction = refraction.normalize();
 			Ray refr_ray = Ray((hit_pnt - hit_norm * SHADOW_BIAS), refraction);
-			color += rayTracing(refr_ray, depth + 1, ior_2) * transmittance * (1 - Kr);
+			color += rayTracing(refr_ray, depth + 1, ior_2) * (1 - Kr);
+		}
+		else {
+			Kr = 1.0f;
 		}
 		/*else {
 			reflection = ray.direction - hit_norm * (ray.direction * hit_norm) * 2;
@@ -639,7 +641,7 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 		reflection = ray.direction - hit_norm * (ray.direction * hit_norm) * 2;
 		reflection = reflection.normalize();
 		Ray refl_ray = Ray(exact_hit_pnt, reflection);
-		color += rayTracing(refl_ray, depth + 1, ior_1) * mat->GetReflection() * Kr;
+		color += rayTracing(refl_ray, depth + 1, ior_1) * Kr;
 	}
 
 	return color;
