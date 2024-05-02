@@ -87,13 +87,14 @@ int WindowHandle = 0;
 
 bool ANTIALIASING = true;
 bool DEPTH_OF_FIELD = true;
+bool FUZZY_REFLECTIONS = false;
 
 int SPP = 4; // (sqrt) Sample Per Pixel - (sqrt) Number of rays called for each pixel
+float ROUGHNESS = 0.1;
 
 bool SOFTSHADOWS = false;
 int Nmb_light = 4;
 int off_x, off_y; // Used to cause a more even distribution when using soft shadows + antialiasing
-
 
 
 /////////////////////////////////////////////////////////////////////// ERRORS
@@ -533,38 +534,17 @@ static Vector sample_unit_disk(void) {
 	return p;
 }
 
+Vector sample_unit_sphere(void) {
+	Vector p;
+	do {
+		p = Vector(rand_float(), rand_float(), rand_float()) * 2 - Vector(1.0, 1.0, 1.0);
+	} while (p * p >= 1.0);
+	return p;
+}
+
 Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medium 1 where the ray is travelling
 {
-	/*
-	Color rayTracing (Scene scene, Vector3d origin, Vector3d ray direction, int depth)
-	{
-		intersect ray with all objects and find a hit point (if any) closest to the start of the ray
-		if (!intersection) return BACKGROUND;
-		else {
-			compute normal at the hit point;
-			for (each source light) {
-				 L = unit light vector from hit point to light source;
-				 if (L • normal>0)
-					 if (!point in shadow); //trace shadow ray
-					 color = diffuse color + specular color;
-		}
-
-		if (depth >= maxDepth) return color;
-
-		if (reflective object) {
-			 rRay = calculate ray in the reflected direction;
-			 rColor = rayTracing(scene, point, rRay direction, depth+1);
-			 reduce rColor by the specular reflection coefficient and add to color; }
-
-		if (transparent object) {
-			 tRay = calculate ray in the refracted direction;
-			 tColor = rayTracing(scene, point, tRay direction, depth+1);
-			 reduce tColor by the transmittance coefficient and add to color; }
-
-		return color;
-	} 
-	*/
-
+	
 	//INSERT HERE YOUR CODE
 	Color color = Color(0,0,0);
 	float min_dist, intensity, ior_2;
@@ -652,8 +632,16 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 	if (mat->GetReflection() > 0) {
 		reflection = ray.direction - hit_norm * (ray.direction * hit_norm) * 2;
 		reflection = reflection.normalize();
-		Ray refl_ray = Ray(exact_hit_pnt, reflection);
-		color += rayTracing(refl_ray, depth + 1, ior_1) * Kr;
+
+		if (FUZZY_REFLECTIONS) {
+			Ray refl_ray = Ray(exact_hit_pnt, (reflection + (sample_unit_sphere() * ROUGHNESS)).normalize());
+			color += rayTracing(refl_ray, depth + 1, ior_1) * Kr;
+		}
+
+		else {
+			Ray refl_ray = Ray(exact_hit_pnt, reflection);
+			color += rayTracing(refl_ray, depth + 1, ior_1) * Kr;
+		}
 	}
 
 	return color;
