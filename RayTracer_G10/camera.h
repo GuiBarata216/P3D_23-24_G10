@@ -79,9 +79,20 @@ public:
 
 	Ray PrimaryRay(const Vector& lens_sample, const Vector& pixel_sample) // DOF: Rays cast from  a thin lens sample to a pixel sample
 	{
-		
 		Vector ray_dir;
-		Vector eye_offset;
+		Vector eye_offset = eye;
+		Vector pixel = pixel_sample;
+
+		pixel.z = -plane_dist;
+
+		ray_dir = n * focal_ratio * pixel.z + 
+			v * (h * focal_ratio * (pixel.y / res_y - 0.5f) - lens_sample.y) + 
+			u * (focal_ratio * w * (pixel.x / res_x - 0.5f) - lens_sample.x);
+		ray_dir = ray_dir.normalize();
+
+		eye_offset = eye_offset + 
+			u * lens_sample.x + 
+			v * lens_sample.y;
 
 		return Ray(eye_offset, ray_dir);
 	}

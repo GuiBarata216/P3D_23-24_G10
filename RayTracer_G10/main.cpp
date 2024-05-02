@@ -27,7 +27,7 @@
 //Enable OpenGL drawing.  
 bool drawModeEnabled = false;
 
-bool P3F_scene = false; //choose between P3F scene or a built-in random scene
+bool P3F_scene = true; //choose between P3F scene or a built-in random scene
 
 #define MAX_DEPTH 6  //number of bounces
 
@@ -86,7 +86,7 @@ int WindowHandle = 0;
 //NEW VARIABLES
 
 bool ANTIALIASING = true;
-bool DEPTHOFFIELD = false;
+bool DEPTH_OF_FIELD = true;
 
 int SPP = 4; // (sqrt) Sample Per Pixel - (sqrt) Number of rays called for each pixel
 
@@ -524,7 +524,14 @@ float schlickApproximation(float cos_d, float ior_1, float ior_2) {
 	return Kr;
 }
 
-
+// Sampling with rejection method
+static Vector sample_unit_disk(void) {
+	Vector p;
+	do {
+		p = Vector(rand_float(), rand_float(), 0.0) * 2 - Vector(1.0, 1.0, 0.0);
+	} while (p * p >= 1.0);
+	return p;
+}
 
 Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medium 1 where the ray is travelling
 {
@@ -666,20 +673,36 @@ void renderScene()
 		scene->GetCamera()->SetEye(Vector(camX, camY, camZ));  //Camera motion
 	}
 
+	Ray* ray = nullptr;
+
 	for (int y = 0; y < RES_Y; y++)
 	{
 		for (int x = 0; x < RES_X; x++)
 		{
 			Color color;
-
-			Vector pixel;  //viewport coordinates
+			//viewport coordinates
+			Vector pixel; 
 
 			if (!ANTIALIASING) {
 				pixel.x = x + 0.5f;
 				pixel.y = y + 0.5f;
 
-				Ray ray = scene->GetCamera()->PrimaryRay(pixel);   //function from camera.h
-				color = rayTracing(ray, 1, 1.0).clamp();
+				Ray* ray = nullptr;
+
+				if (DEPTH_OF_FIELD) {
+					Vector lens;
+					float aperture = scene->GetCamera()->GetAperture();
+					// Compute the sample point on the "thin lens"
+					lens = sample_unit_disk() * aperture;
+					ray = &scene->GetCamera()->PrimaryRay(lens, pixel);
+
+				}
+				else {
+					ray = &scene->GetCamera()->PrimaryRay(pixel);
+				}
+
+				color = rayTracing(*ray, 1, 1.0).clamp();
+
 			}
 			else {
 				for (int p = 0; p < SPP; p++) {
@@ -691,7 +714,18 @@ void renderScene()
 
 						Ray* ray = nullptr;
 
-						ray = &scene->GetCamera()->PrimaryRay(pixel);
+						if (DEPTH_OF_FIELD) {
+							Vector lens;
+							float aperture = scene->GetCamera()->GetAperture();
+
+							// Compute the sample point on the "thin lens"
+							lens = sample_unit_disk() * aperture;
+
+							ray = &scene->GetCamera()->PrimaryRay(lens, pixel);
+						}
+						else {
+							ray = &scene->GetCamera()->PrimaryRay(pixel);
+						}
 
 						color += rayTracing(*ray, 1, 1.0).clamp();
 					}
