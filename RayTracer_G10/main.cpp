@@ -534,7 +534,8 @@ Color calculateColor(Vector hit_pnt, Vector hit_norm, Light* light, Vector L, Ve
 		float spec_int = pow(max((hit_norm * halfway_dir), 0.0), mat->GetShine());
 		Color specular = light_color * mat->GetSpecColor() * spec_int * mat->GetSpecular();
 
-		color = diffuse + specular;
+		int num_lights = scene->getNumLights();
+		color = (diffuse + specular) / (num_lights * 0.5f);
 	}
 
 	return color;
@@ -757,8 +758,6 @@ void renderScene()
 				pixel.x = x + 0.5f;
 				pixel.y = y + 0.5f;
 
-				Ray* ray = nullptr;
-
 				if (DEPTH_OF_FIELD) {
 					Vector lens;
 					float aperture = scene->GetCamera()->GetAperture();
@@ -781,8 +780,6 @@ void renderScene()
 						off_y = j;
 						pixel.x = x + (k + rand_float()) / SPP;
 						pixel.y = y + (j + rand_float()) / SPP;
-
-						Ray* ray = nullptr;
 
 						if (DEPTH_OF_FIELD) {
 							Vector lens;
