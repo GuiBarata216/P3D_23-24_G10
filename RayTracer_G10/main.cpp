@@ -86,16 +86,13 @@ int WindowHandle = 0;
 //NEW VARIABLES
 
 bool ANTIALIASING = true;
-bool DEPTH_OF_FIELD = true;
+bool DEPTH_OF_FIELD = false;
 bool FUZZY_REFLECTIONS = false;
+bool SOFT_SHADOWS = false;
 
 int SPP = 4; // (sqrt) Sample Per Pixel - (sqrt) Number of rays called for each pixel
-float ROUGHNESS = 0.1;
-
-bool SOFTSHADOWS = false;
-int Nmb_light = 4;
-int off_x, off_y; // Used to cause a more even distribution when using soft shadows + antialiasing
-
+int NUM_LIGHTS = 4;
+float ROUGHNESS = 0.1f;
 
 /////////////////////////////////////////////////////////////////////// ERRORS
 
@@ -484,13 +481,13 @@ Object* getClosestObject(Ray ray, float& t) {
 	return closest;
 }
 
-bool getIntersection(Ray ray, float min_dist, bool in_shadow) {
+bool getIntersection(Ray ray, float min_dist, bool in_shadow, float sf_length) {
 	Object* obj = NULL;
 
 	for (int i = 0; i < scene->getNumObjects(); i++) {
 		obj = scene->getObject(i);
 
-		if (obj->intercepts(ray, min_dist)) {
+		if (obj->intercepts(ray, min_dist) && min_dist < sf_length) {
 			in_shadow = true;
 			return in_shadow;
 		}
@@ -500,21 +497,47 @@ bool getIntersection(Ray ray, float min_dist, bool in_shadow) {
 }
 
 
-Color calculateColor(Vector hit_norm, Light* light, Vector L, Vector s_r_dir, Material* mat, Vector hit_pnt) {
+Color calculateColor(Vector hit_pnt, Vector hit_norm, Light* light, Vector L, Vector ray_dir, Material* mat) {
 
 	Color color = Color(0, 0, 0);
-	Vector halfway_dir = L + s_r_dir;
-	halfway_dir = halfway_dir.normalize();
+	Color light_color = light->color;
+	float intensity, sf_length;
+	float min_dist = INFINITY;
+	bool in_shadow = false;
+	Vector s_ray_dir, halfway_dir;
 
-	float diff_int = max(hit_norm * L, 0.0);
-	Color diffuse = light->color * mat->GetDiffColor() * diff_int;
+	Ray shadow_feeler = Ray(hit_pnt, L);
 
-	float spec_int = pow(max((hit_norm * halfway_dir), 0.0), mat->GetShine());
-	Color specular = light->color * mat->GetSpecColor() * spec_int;
+	if (bvh_ptr != NULL) {
+		if (bvh_ptr->Traverse(shadow_feeler)) in_shadow = true;
+	}
+	else if (grid_ptr != NULL) {
+		if (grid_ptr->Traverse(shadow_feeler)) in_shadow = true;
+	}
+	else {
+		sf_length = shadow_feeler.direction.length(); //distance between light and intersection point
+		shadow_feeler.direction.normalize();
+		in_shadow = getIntersection(shadow_feeler, min_dist, in_shadow, sf_length);
+	}
 
-	color = diffuse * mat ->GetDiffuse() + specular * mat->GetSpecular();
+	if (!in_shadow) {
+		s_ray_dir = ray_dir * -1;
+		L = L.normalize();
+
+		halfway_dir = L + s_ray_dir;
+		halfway_dir = halfway_dir.normalize();
+
+		float diff_int = max(hit_norm * L, 0.0);
+		Color diffuse = light_color * mat->GetDiffColor() * diff_int * mat->GetDiffuse();
+
+		float spec_int = pow(max((hit_norm * halfway_dir), 0.0), mat->GetShine());
+		Color specular = light_color * mat->GetSpecColor() * spec_int * mat->GetSpecular();
+
+		color = diffuse + specular;
+	}
 
 	return color;
+	
 }
 
 float schlickApproximation(float cos_d, float ior_1, float ior_2) {
@@ -542,32 +565,108 @@ Vector sample_unit_sphere(void) {
 	return p;
 }
 
+
+Color calculateLightReflection(Vector light_pos, Vector hit_pnt, Vector hit_norm, Vector ray_dir, Material* mat, Light* light) {
+	Color color = Color(0, 0, 0);
+	Vector L = light_pos - hit_pnt;
+	L = L.normalize();
+
+	float intensity = L * hit_norm;
+
+	Vector reflect = ray_dir - hit_norm * (ray_dir * hit_norm) * 2;
+	reflect = reflect.normalize();
+
+	if (intensity > 0) {
+		Vector exact_hit_pnt = hit_pnt + hit_norm * SHADOW_BIAS;
+		color = calculateColor(exact_hit_pnt, hit_norm, light, L, ray_dir, mat);
+		return color;
+	}
+	
+	return color;
+}
+
+Color calculateLightContribution(Ray ray, Vector hit_pnt, Vector hit_norm, Material* mat) {
+	Light* light = NULL;
+	Vector light_pos, L, reflect;
+	Color light_color = Color(0, 0, 0);
+
+	for (int i = 0; i < scene->getNumLights(); i++) {
+		light = scene->getLight(i);
+		light_pos = light->position;
+
+		if (SOFT_SHADOWS) {
+			float l_jitt_size = 0.5f;
+			Color aux_color = Color(0, 0, 0);
+
+			if (!ANTIALIASING) {
+				float dist_btw_l = l_jitt_size / NUM_LIGHTS;
+
+				for (int k = 0; k < SPP; k++) {
+					for (int j = 0; j < SPP; j++) {
+						light_pos.x = light_pos.x - dist_btw_l * NUM_LIGHTS * l_jitt_size;
+						light_pos.y = light_pos.y - dist_btw_l * NUM_LIGHTS * l_jitt_size;
+
+						aux_color += calculateLightReflection(light_pos, hit_pnt, hit_norm, ray.direction, mat, light);
+					}
+				}
+
+				aux_color = aux_color / pow(SPP, 2);
+				light_color += aux_color;
+			}
+
+			else {
+				for (int k = 0; k < SPP; k++) {
+					for (int j = 0; j < SPP; j++) {
+						light_pos.x = light_pos.x - 0.5 + (k + rand_float()) / SPP;
+						light_pos.y = light_pos.y - 0.5 + (j + rand_float()) / SPP;
+						light_color += calculateLightReflection(light_pos, hit_pnt, hit_norm, ray.direction, mat, light);
+					}
+				}
+			}
+		}
+		else {
+			light_color += calculateLightReflection(light_pos, hit_pnt, hit_norm, ray.direction, mat, light);
+		}
+	}
+	return light_color;
+}
+
 Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medium 1 where the ray is travelling
 {
-	
-	//INSERT HERE YOUR CODE
 	Color color = Color(0,0,0);
-	float min_dist, intensity, ior_2;
+	float min_dist = INFINITY;
+	float ior_2;
 	Object* hit_obj = NULL;
-	Vector hit_pnt, exact_hit_pnt, hit_norm, light_Pos, L, s_ray_dir, v_t, refraction, reflection;
+	Material* mat = NULL;
+	Vector hit_pnt, exact_hit_pnt, hit_norm, light_Pos, L, v_t, refraction, reflection;
 	Light* light = NULL;
-	bool in_shadow = false;
-	bool r_inside = false;
+	bool is_hit = false, r_inside = false;
 
-	//Gest ClosestObject
-	hit_obj = getClosestObject(ray, min_dist);
+	//Grid is active
+	if (grid_ptr != NULL) {
+		is_hit = grid_ptr->Traverse(ray, &hit_obj, hit_pnt);
+	}
+	//BVH is active
+	else if (bvh_ptr != NULL) {
+		is_hit = bvh_ptr->Traverse(ray, &hit_obj, hit_pnt);
+	}
+	else {
+		hit_obj = getClosestObject(ray, min_dist);
+
+		if (hit_obj != NULL) {
+			hit_pnt = ray.origin + ray.direction * min_dist;
+		}
+	}
 
 	//If ray intercepts no object return Background or Skybox color
-	if (hit_obj == NULL) {
+	if (hit_obj == NULL && !is_hit) {
 		if (scene->GetSkyBoxFlg())
 			return scene->GetSkyboxColor(ray);
 		else
 			return scene->GetBackgroundColor();
 	}
 	
-	hit_pnt = ray.origin + ray.direction * min_dist;
-	exact_hit_pnt = hit_pnt + hit_obj->getNormal(hit_pnt) * SHADOW_BIAS;
-	hit_norm = hit_obj->getNormal(exact_hit_pnt).normalize();
+	hit_norm = hit_obj->getNormal(hit_pnt);
 
 	// If ray is inside the object
 	if (hit_norm * ray.direction > 0) {
@@ -575,34 +674,16 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 		r_inside = true;
 	}
 
-	if (!r_inside){
-		for (int i = 0; i < scene->getNumLights(); i++) {
-			light = scene->getLight(i);
-			light_Pos = light->position;
+	exact_hit_pnt = hit_pnt + hit_norm * SHADOW_BIAS;
+	//hit_norm = hit_norm.normalize();
+	mat = hit_obj->GetMaterial();
 
-			L = light_Pos - hit_pnt;
-			L = L.normalize();
-
-			intensity = L * hit_norm;
-
-			if (intensity > 0) {
-
-				Ray shadow_feeler = Ray(exact_hit_pnt, L);
-				in_shadow = getIntersection(shadow_feeler, min_dist, in_shadow);
-
-				if (!in_shadow) {
-					s_ray_dir = ray.direction * -1;
-					color += calculateColor(hit_norm, light, L, s_ray_dir, hit_obj->GetMaterial(), hit_pnt);
-				}
-			}
-		}
-	}
-
+	color += calculateLightContribution(ray, exact_hit_pnt, hit_norm, mat);
+	
 	if (depth == MAX_DEPTH) {
 		return color;
 	}
 
-	Material* mat = hit_obj->GetMaterial();
 	float Kr = mat->GetReflection();
 	float transmittance = mat->GetTransmittance();
 
@@ -658,8 +739,11 @@ void renderScene()
 
 	if (drawModeEnabled) {
 		glClear(GL_COLOR_BUFFER_BIT);
-		scene->GetCamera()->SetEye(Vector(camX, camY, camZ));  //Camera motion
+		scene->GetCamera()->SetEye(Vector(camX, camY, camZ)); //Camera motion
 	}
+
+	// Set random seed for this iteration
+	set_rand_seed(time(NULL)); 
 
 	Ray* ray = nullptr;
 
@@ -695,8 +779,6 @@ void renderScene()
 			else {
 				for (int p = 0; p < SPP; p++) {
 					for (int q = 0; q < SPP; q++) {
-						off_x = p;
-						off_y = q;
 						pixel.x = x + (p + rand_float()) / SPP;
 						pixel.y = y + (q + rand_float()) / SPP;
 

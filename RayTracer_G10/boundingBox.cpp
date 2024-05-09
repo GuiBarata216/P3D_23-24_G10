@@ -122,4 +122,13 @@ bool AABB::intercepts(const Ray& ray, float& t)
 
 	return (t0 < t1 && t1 > 0);
 }
+
+float AABB::surface_area() {
+
+	Vector measures = this->max - this->min;
+	float surface_are = 2 * (measures.x * measures.y + measures.x * measures.z + measures.y * measures.z);
+
+	return surface_are;
+}
+
 #endif

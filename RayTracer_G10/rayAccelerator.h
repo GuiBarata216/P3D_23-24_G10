@@ -70,6 +70,7 @@ class BVH
 
 private:
 	int Threshold = 2;
+	int SAH_splits = 0;
 	vector<Object*> objects;
 	vector<BVH::BVHNode*> nodes;
 
@@ -87,6 +88,9 @@ public:
 	
 	void Build(vector<Object*>& objects);
 	void build_recursive(int left_index, int right_index, BVHNode* node);
+	int SAH(int left_index, int right_index, BVHNode* node);
+	int find_split(int left_index, int right_index, BVHNode* node);
+	AABB build_bbox(int left_index, int right_index);
 	bool Traverse(Ray& ray, Object** hit_obj, Vector& hit_point);
 	bool Traverse(Ray& ray);
 };

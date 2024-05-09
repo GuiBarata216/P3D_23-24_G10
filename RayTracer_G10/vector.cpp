@@ -94,3 +94,7 @@ Vector Vector::operator%( const Vector& v)
 
 	return Vector( sX, sY, sZ );
 }
+
+int Vector::largest_coordinate(){
+	return (x > y) ? ((x > z) ? 0 : 2) : ((y > z) ? 1 : 2);
+}

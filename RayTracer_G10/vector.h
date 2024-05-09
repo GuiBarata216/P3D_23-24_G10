@@ -29,6 +29,7 @@ public:
 	Vector&	operator-=	(const float v);
 	Vector&	operator*=	(const float v);
 	Vector&	operator+=	(const float v);
+	int largest_coordinate();
 
 	float x;
 	float y;
