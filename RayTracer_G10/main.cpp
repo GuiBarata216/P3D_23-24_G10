@@ -88,10 +88,11 @@ int WindowHandle = 0;
 bool ANTIALIASING = true;
 bool DEPTH_OF_FIELD = false;
 bool FUZZY_REFLECTIONS = false;
-bool SOFT_SHADOWS = false;
+bool SOFT_SHADOWS = true;
 
 int SPP = 4; // (sqrt) Sample Per Pixel - (sqrt) Number of rays called for each pixel
-int NUM_LIGHTS = 4;
+int NUM_LIGHTS = 4; // Should be the same as SPP
+int off_x, off_y; // Used for more even distribution using SOFT_SHADOWS + ANTIALIASING
 float ROUGHNESS = 0.1f;
 
 /////////////////////////////////////////////////////////////////////// ERRORS
@@ -615,15 +616,12 @@ Color calculateLightContribution(Ray ray, Vector hit_pnt, Vector hit_norm, Mater
 			}
 
 			else {
-				for (int k = 0; k < SPP; k++) {
-					for (int j = 0; j < SPP; j++) {
-						light_pos.x = light_pos.x - 0.5 + (k + rand_float()) / SPP;
-						light_pos.y = light_pos.y - 0.5 + (j + rand_float()) / SPP;
-						light_color += calculateLightReflection(light_pos, hit_pnt, hit_norm, ray.direction, mat, light);
-					}
-				}
+				light_pos.x = light_pos.x - l_jitt_size + (off_x + rand_float()) / SPP;
+				light_pos.y = light_pos.y - l_jitt_size + (off_y + rand_float()) / SPP;
+				light_color += calculateLightReflection(light_pos, hit_pnt, hit_norm, ray.direction, mat, light);
 			}
 		}
+
 		else {
 			light_color += calculateLightReflection(light_pos, hit_pnt, hit_norm, ray.direction, mat, light);
 		}
@@ -777,10 +775,12 @@ void renderScene()
 
 			}
 			else {
-				for (int p = 0; p < SPP; p++) {
-					for (int q = 0; q < SPP; q++) {
-						pixel.x = x + (p + rand_float()) / SPP;
-						pixel.y = y + (q + rand_float()) / SPP;
+				for (int k = 0; k < SPP; k++) {
+					for (int j = 0; j < SPP; j++) {
+						off_x = k;
+						off_y = j;
+						pixel.x = x + (k + rand_float()) / SPP;
+						pixel.y = y + (j + rand_float()) / SPP;
 
 						Ray* ray = nullptr;
 
