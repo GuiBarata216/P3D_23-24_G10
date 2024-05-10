@@ -86,14 +86,14 @@ int WindowHandle = 0;
 //NEW VARIABLES
 
 bool ANTIALIASING = true;
-bool DEPTH_OF_FIELD = false;
-bool FUZZY_REFLECTIONS = false;
+bool DEPTH_OF_FIELD = true;
+bool FUZZY_REFLECTIONS = true;
 bool SOFT_SHADOWS = true;
 
 int SPP = 4; // (sqrt) Sample Per Pixel - (sqrt) Number of rays called for each pixel
 int NUM_LIGHTS = 4; // Should be the same as SPP
 int off_x, off_y; // Used for more even distribution using SOFT_SHADOWS + ANTIALIASING
-float ROUGHNESS = 0.1f;
+float ROUGHNESS = 0.0f;
 
 /////////////////////////////////////////////////////////////////////// ERRORS
 
@@ -542,32 +542,6 @@ Color calculateColor(Vector hit_pnt, Vector hit_norm, Light* light, Vector L, Ve
 	
 }
 
-float schlickApproximation(float cos_d, float ior_1, float ior_2) {
-
-	float R_0 = pow(((ior_1 - ior_2) / (ior_1 + ior_2)), 2);
-	float Kr = R_0 + (1.0f - R_0) * pow((1 - cos_d), 5);
-
-	return Kr;
-}
-
-// Sampling with rejection method
-static Vector sample_unit_disk(void) {
-	Vector p;
-	do {
-		p = Vector(rand_float(), rand_float(), 0.0) * 2 - Vector(1.0, 1.0, 0.0);
-	} while (p * p >= 1.0);
-	return p;
-}
-
-Vector sample_unit_sphere(void) {
-	Vector p;
-	do {
-		p = Vector(rand_float(), rand_float(), rand_float()) * 2 - Vector(1.0, 1.0, 1.0);
-	} while (p * p >= 1.0);
-	return p;
-}
-
-
 Color calculateLightReflection(Vector light_pos, Vector hit_pnt, Vector hit_norm, Vector ray_dir, Material* mat, Light* light) {
 	Color color = Color(0, 0, 0);
 	Vector L = light_pos - hit_pnt;
@@ -628,6 +602,14 @@ Color calculateLightContribution(Ray ray, Vector hit_pnt, Vector hit_norm, Mater
 		}
 	}
 	return light_color;
+}
+
+float schlickApproximation(float cos_d, float ior_1, float ior_2) {
+
+	float R_0 = pow(((ior_1 - ior_2) / (ior_1 + ior_2)), 2);
+	float Kr = R_0 + (1.0f - R_0) * pow((1 - cos_d), 5);
+
+	return Kr;
 }
 
 Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medium 1 where the ray is travelling
@@ -711,10 +693,9 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 
 	if (mat->GetReflection() > 0) {
 		reflection = ray.direction - hit_norm * (ray.direction * hit_norm) * 2;
-		reflection = reflection.normalize();
 
 		if (FUZZY_REFLECTIONS) {
-			Ray refl_ray = Ray(exact_hit_pnt, (reflection + (sample_unit_sphere() * ROUGHNESS)).normalize());
+			Ray refl_ray = Ray(exact_hit_pnt, (reflection + (rnd_unit_sphere() * ROUGHNESS)).normalize());
 			color += rayTracing(refl_ray, depth + 1, ior_1) * Kr;
 		}
 
@@ -762,7 +743,7 @@ void renderScene()
 					Vector lens;
 					float aperture = scene->GetCamera()->GetAperture();
 					// Compute the sample point on the "thin lens"
-					lens = sample_unit_disk() * aperture;
+					lens = rnd_unit_disk() * aperture;
 					ray = &scene->GetCamera()->PrimaryRay(lens, pixel);
 
 				}
@@ -786,7 +767,7 @@ void renderScene()
 							float aperture = scene->GetCamera()->GetAperture();
 
 							// Compute the sample point on the "thin lens"
-							lens = sample_unit_disk() * aperture;
+							lens = rnd_unit_disk() * aperture;
 
 							ray = &scene->GetCamera()->PrimaryRay(lens, pixel);
 						}
