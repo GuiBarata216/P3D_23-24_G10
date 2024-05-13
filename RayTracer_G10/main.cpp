@@ -1,8 +1,11 @@
  ///////////////////////////////////////////////////////////////////////
 //
 // P3D Course
-// (c) 2021 by João Madeiras Pereira
-//Ray Tracing P3F scenes and drawing points with Modern OpenGL
+// (c) 2024 by João Madeiras Pereira
+// Ray Tracing P3F scenes and drawing points with Modern OpenGL
+// 
+// G10:
+// Done by David Martins ist199197, Guilherme Barata ist193718, João Ramos ist199253
 //
 ///////////////////////////////////////////////////////////////////////
 
@@ -77,7 +80,7 @@ Scene* scene = NULL;
 
 Grid* grid_ptr = NULL;
 BVH* bvh_ptr = NULL;
-accelerator Accel_Struct = NONE;
+accelerator Accel_Struct = NONE; //NONE or GRID_ACC or BVH_ACC
 
 int RES_X, RES_Y;
 
@@ -85,15 +88,15 @@ int WindowHandle = 0;
 
 //NEW VARIABLES
 
-bool ANTIALIASING = true;
-bool DEPTH_OF_FIELD = true;
-bool FUZZY_REFLECTIONS = true;
-bool SOFT_SHADOWS = true;
+bool ANTIALIASING = false;
+bool DEPTH_OF_FIELD = false;
+bool FUZZY_REFLECTIONS = false;
+bool SOFT_SHADOWS = false;
 
-int SPP = 4; // (sqrt) Sample Per Pixel - (sqrt) Number of rays called for each pixel
+int SPP = 4; // Sample Per Pixel - Number of rays called for each pixel
 int NUM_LIGHTS = 4; // Should be the same as SPP
 int off_x, off_y; // Used for more even distribution using SOFT_SHADOWS + ANTIALIASING
-float ROUGHNESS = 0.0f;
+float ROUGHNESS = 0.3f;
 
 /////////////////////////////////////////////////////////////////////// ERRORS
 
@@ -641,10 +644,8 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 
 	//If ray intercepts no object return Background or Skybox color
 	if (hit_obj == NULL && !is_hit) {
-		if (scene->GetSkyBoxFlg())
-			return scene->GetSkyboxColor(ray);
-		else
-			return scene->GetBackgroundColor();
+		if (scene->GetSkyBoxFlg()) return scene->GetSkyboxColor(ray);
+		else return scene->GetBackgroundColor();
 	}
 	
 	hit_norm = hit_obj->getNormal(hit_pnt);
@@ -674,7 +675,7 @@ Color rayTracing(Ray ray, int depth, float ior_1)  //index of refraction of medi
 		if (r_inside) ior_2 = 1.0f;
 		else ior_2 = mat->GetRefrIndex();
 
-		Kr = schlickApproximation(cos_t_i, ior_2, ior_1);
+		Kr = schlickApproximation(cos_t_i, ior_1, ior_2);
 		v_t = hit_norm * cos_t_i + ray.direction;
 		float sin_t_t = (ior_1 / ior_2) * v_t.length();
 		v_t = v_t.normalize();
@@ -732,19 +733,17 @@ void renderScene()
 		for (int x = 0; x < RES_X; x++)
 		{
 			Color color;
-			//viewport coordinates
-			Vector pixel; 
+			Vector pixel; //viewport coordinates
 
 			if (!ANTIALIASING) {
 				pixel.x = x + 0.5f;
 				pixel.y = y + 0.5f;
 
+				//Nao deve funcionar ////////////////////////////////////////////////////////////////////////////
 				if (DEPTH_OF_FIELD) {
-					Vector lens;
 					float aperture = scene->GetCamera()->GetAperture();
-					// Compute the sample point on the "thin lens"
-					lens = rnd_unit_disk() * aperture;
-					ray = &scene->GetCamera()->PrimaryRay(lens, pixel);
+					Vector lens_sample = rnd_unit_disk() * aperture;
+					ray = &scene->GetCamera()->PrimaryRay(lens_sample, pixel);
 
 				}
 				else {
@@ -763,13 +762,10 @@ void renderScene()
 						pixel.y = y + (j + rand_float()) / SPP;
 
 						if (DEPTH_OF_FIELD) {
-							Vector lens;
 							float aperture = scene->GetCamera()->GetAperture();
+							Vector lens_sample = rnd_unit_disk() * aperture;
 
-							// Compute the sample point on the "thin lens"
-							lens = rnd_unit_disk() * aperture;
-
-							ray = &scene->GetCamera()->PrimaryRay(lens, pixel);
+							ray = &scene->GetCamera()->PrimaryRay(lens_sample, pixel);
 						}
 						else {
 							ray = &scene->GetCamera()->PrimaryRay(pixel);
@@ -778,7 +774,7 @@ void renderScene()
 						color += rayTracing(*ray, 1, 1.0).clamp();
 					}
 				}
-				color = color / (SPP * SPP);
+				color = color / pow(SPP, 2);
 
 			}
 

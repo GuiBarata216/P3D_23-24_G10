@@ -1,5 +1,5 @@
 #no acceleration data structure
-accel 0
+accel 2
 #no random samples. Just one fixed sample per pixel
 spp 0
 #background color azulada
