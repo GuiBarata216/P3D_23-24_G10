@@ -45,6 +45,9 @@ void BVH::Build(vector<Object *> &objs) {
 			build_recursive(0, objects.size(), root); // -> root node takes all the 
 		}
 
+// build_recursive: This is a helper function for the tree-building process.
+// It recursively subdivides the space and assigns objects to nodes based on, 
+// Surface Area Heuristic(SAH) or a simple axis-aligned split.
 void BVH::build_recursive(int left_index, int right_index, BVHNode* node) {
 	//PUT YOUR CODE HERE
 
@@ -83,6 +86,10 @@ void BVH::build_recursive(int left_index, int right_index, BVHNode* node) {
 	}
 }
 
+// SAH: Surface Area Heuristic. This method calculates the cost of splitting a bounding 
+// box at different positions and chooses the split position that minimizes the cost. 
+// SAH aims to balance the number of objects in each child node and minimize the surface 
+// area of the resulting bounding boxes.
 int BVH::SAH(int left_index, int right_index, BVHNode* node) {
 	float cost_traversal = 1.0f;
 	float cost_intersection = 10.0f;
@@ -137,6 +144,9 @@ int BVH::SAH(int left_index, int right_index, BVHNode* node) {
 	return split_index;
 }
 
+// find_split: This method finds a split position based on the largest dimension 
+// of the bounding box. It sorts objects along that dimension and chooses the 
+// midpoint as the split position.
 int BVH::find_split(int left_index, int right_index, BVHNode* node) {
 
 	AABB bbox = node->getAABB();
@@ -178,6 +188,11 @@ AABB BVH::build_bbox(int left_index, int right_index) {
 	return bbox;
 }
 
+// Traverse: This method traverses the BVH tree to find intersections between 
+// a ray and objects in the scene. It starts from the root node and recursively 
+// descends the tree, checking for intersections with bounding boxes and individual 
+// objects. If an intersection is found, it updates the closest intersection distance 
+// and the intersected object.
 bool BVH::Traverse(Ray& ray, Object** hit_obj, Vector& hit_point) {
 	float tmp;
 	float tmin = FLT_MAX;  //contains the closest primitive intersection
@@ -259,6 +274,10 @@ bool BVH::Traverse(Ray& ray, Object** hit_obj, Vector& hit_point) {
 	return true;
 }
 
+//Traverse(with shadow ray): Similar to the regular traversal method, 
+// but optimized for shadow rays. It checks for intersections but 
+// doesn't calculate the exact intersection point or object, because 
+// there is no need for that, as it's used for determining shadows.
 bool BVH::Traverse(Ray& ray) {  //shadow ray with length
 			float temp;
 			double length = ray.direction.length(); //distance between light and intersection point
