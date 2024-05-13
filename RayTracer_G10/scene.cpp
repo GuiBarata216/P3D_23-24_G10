@@ -30,8 +30,14 @@ Triangle::Triangle(Vector& P0, Vector& P1, Vector& P2)
 	Min = Vector(+FLT_MAX, +FLT_MAX, +FLT_MAX);
 	Max = Vector(-FLT_MAX, -FLT_MAX, -FLT_MAX);
 
+	Min.x = min(P0.x, min(P1.x, P2.x));
+	Min.y = min(P0.y, min(P1.y, P2.y));
+	Min.z = min(P0.z, min(P1.z, P2.z));
 
-	// enlarge the bounding box a bit just in case...
+	Max.x = max(P0.x, max(P1.x, P2.x));
+	Max.y = max(P0.y, max(P1.y, P2.y));
+	Max.z = max(P0.z, max(P1.z, P2.z));
+
 	Min -= EPSILON;
 	Max += EPSILON;
 }

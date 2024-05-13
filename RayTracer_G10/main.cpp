@@ -88,10 +88,10 @@ int WindowHandle = 0;
 
 //NEW VARIABLES
 
-bool ANTIALIASING = false;
-bool DEPTH_OF_FIELD = false;
+bool ANTIALIASING = true;
+bool DEPTH_OF_FIELD = true;
 bool FUZZY_REFLECTIONS = false;
-bool SOFT_SHADOWS = false;
+bool SOFT_SHADOWS = true;
 
 int SPP = 4; // Sample Per Pixel - Number of rays called for each pixel
 int NUM_LIGHTS = 4; // Should be the same as SPP
