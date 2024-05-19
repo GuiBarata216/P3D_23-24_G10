@@ -30,7 +30,7 @@
 //Enable OpenGL drawing.  
 bool drawModeEnabled = false;
 
-bool P3F_scene = true; //choose between P3F scene or a built-in random scene
+bool P3F_scene = false; //choose between P3F scene or a built-in random scene
 
 #define MAX_DEPTH 6  //number of bounces
 
@@ -739,7 +739,6 @@ void renderScene()
 				pixel.x = x + 0.5f;
 				pixel.y = y + 0.5f;
 
-				//Nao deve funcionar ////////////////////////////////////////////////////////////////////////////
 				if (DEPTH_OF_FIELD) {
 					float aperture = scene->GetCamera()->GetAperture();
 					Vector lens_sample = rnd_unit_disk() * aperture;
